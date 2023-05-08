@@ -5,11 +5,12 @@
 import datetime
 import os
 from urllib.parse import urlencode
+import asyncio
 
 import httpbin
 from asgiref.wsgi import WsgiToAsgi
 from starlette.applications import Starlette
-from starlette.responses import PlainTextResponse, Response
+from starlette.responses import PlainTextResponse, Response, StreamingResponse
 from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
@@ -82,6 +83,40 @@ async def padding(request):
     return PlainTextResponse("Z" * size)
 
 
+async def streaming(interval, time):
+    """
+    Send data every interval (sec.), last for time (sec.).
+    """
+    cnt = 0
+    while cnt <= time:
+        yield("Z" * 1000)
+        await asyncio.sleep(interval)
+        cnt += interval
+
+
+async def test(request):
+    gen = streaming(0.5, 60)
+    return StreamingResponse(gen)
+
+
+async def decision(request):
+    interval = 1
+    cnt = 0
+    notify_cnt = 0
+    while True:
+        if notify_cnt == 5:
+            # send notify to client
+            return PlainTextResponse("switch")
+        elif cnt == 3:
+            # send heartbeat to client
+            return PlainTextResponse("heartbeat")
+        
+        await asyncio.sleep(interval)
+        cnt += interval
+        notify_cnt += interval
+    
+
+
 async def ws(websocket):
     """
     WebSocket echo endpoint.
@@ -131,6 +166,8 @@ async def wt(scope: Scope, receive: Receive, send: Send) -> None:
 
 starlette = Starlette(
     routes=[
+        Route("/test", test),
+        Route("/decision", decision),
         Route("/", homepage),
         Route("/{size:int}", padding),
         Route("/echo", echo, methods=["POST"]),

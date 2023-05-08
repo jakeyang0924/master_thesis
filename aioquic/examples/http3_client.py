@@ -32,6 +32,8 @@ try:
 except ImportError:
     uvloop = None
 
+from iproute import Route
+
 logger = logging.getLogger("client")
 
 HttpConnection = Union[H0Connection, H3Connection]
@@ -266,6 +268,14 @@ async def perform_http_request(
         http_events = await client.get(url)
         method = "GET"
     elapsed = time.time() - start
+    
+    # handle response
+    for http_event in http_events:
+        if isinstance(http_event, DataReceived) and http_event.data.decode('utf-8') == "switch":
+            if Route.switch_default_route():
+                print("default route switches successfully!")
+            else:
+                print("request timeout!")
 
     # print speed
     octets = 0
