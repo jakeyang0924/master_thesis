@@ -32,6 +32,9 @@ try:
 except ImportError:
     uvloop = None
 
+# thesis
+from iproute import Route
+
 logger = logging.getLogger("client")
 
 HttpConnection = Union[H0Connection, H3Connection]
@@ -248,7 +251,7 @@ async def perform_http_request(
     data: Optional[str],
     include: bool,
     output_dir: Optional[str],
-) -> None:
+) -> None:    
     # perform request
     start = time.time()
     if data is not None:
@@ -266,16 +269,30 @@ async def perform_http_request(
         http_events = await client.get(url)
         method = "GET"
     elapsed = time.time() - start
+    
+    # thesis: handle response
+    for http_event in http_events:
+        if isinstance(http_event, DataReceived) and http_event.data.decode('utf-8') != "error":
+            response = http_event.data.decode('utf-8').split()
+            cur_route = Route.get_current_route()
+            if '172.18.3.' in cur_route['ip']:
+                an = 'wifi'
+            else:
+                an = '5g'
+            if an != response[0] and float(response[1]) > 20 and Route.switch_default_route():
+                print("default route switches")
+            else:
+                print("no switch occurs")
 
     # print speed
     octets = 0
     for http_event in http_events:
         if isinstance(http_event, DataReceived):
             octets += len(http_event.data)
-    logger.info(
-        "Response received for %s %s : %d bytes in %.1f s (%.3f Mbps)"
-        % (method, urlparse(url).path, octets, elapsed, octets * 8 / elapsed / 1000000)
-    )
+    # logger.info(
+    #     "Response received for %s %s : %d bytes in %.1f s (%.3f Mbps)"
+    #     % (method, urlparse(url).path, octets, elapsed, octets * 8 / elapsed / 1000000)
+    # )
 
     # output response
     if output_dir is not None:
@@ -306,7 +323,7 @@ def process_http_pushes(
                         method = value.decode()
                     elif header == b":path":
                         path = value.decode()
-        logger.info("Push received for %s %s : %s bytes", method, path, octets)
+        # logger.info("Push received for %s %s : %s bytes", method, path, octets)
 
         # output response
         if output_dir is not None:
@@ -338,7 +355,7 @@ def save_session_ticket(ticket: SessionTicket) -> None:
     Callback which is invoked by the TLS engine when a new session ticket
     is received.
     """
-    logger.info("New session ticket received")
+    # logger.info("New session ticket received")
     if args.session_ticket:
         with open(args.session_ticket, "wb") as fp:
             pickle.dump(ticket, fp)

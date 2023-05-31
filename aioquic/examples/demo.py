@@ -6,6 +6,7 @@ import datetime
 import os
 from urllib.parse import urlencode
 import asyncio
+import redis
 
 import httpbin
 from asgiref.wsgi import WsgiToAsgi
@@ -24,6 +25,8 @@ LOGS_PATH = os.path.join(STATIC_ROOT, "logs")
 QVIS_URL = "https://qvis.quictools.info/"
 
 templates = Jinja2Templates(directory=os.path.join(ROOT, "templates"))
+
+
 
 
 async def homepage(request):
@@ -79,42 +82,41 @@ async def padding(request):
     """
     Dynamically generated data, maximum 50MB.
     """
+    print("his")
     size = min(50000000, request.path_params["size"])
     return PlainTextResponse("Z" * size)
 
 
-async def streaming(interval, time):
+async def streaming(interval, time, size):
     """
     Send data every interval (sec.), last for time (sec.).
     """
     cnt = 0
     while cnt <= time:
-        yield("Z" * 1000)
+        yield("Z" * size)
         await asyncio.sleep(interval)
         cnt += interval
 
 
 async def test(request):
-    gen = streaming(0.5, 60)
+    gen = streaming(0.5, 60, 1000)
     return StreamingResponse(gen)
 
+r = redis.Redis(host='localhost', port=6379, db=0)
 
 async def decision(request):
-    interval = 1
-    cnt = 0
-    notify_cnt = 0
-    while True:
-        if notify_cnt == 5:
-            # send notify to client
-            return PlainTextResponse("switch")
-        elif cnt == 3:
-            # send heartbeat to client
-            return PlainTextResponse("heartbeat")
-        
-        await asyncio.sleep(interval)
-        cnt += interval
-        notify_cnt += interval
-    
+    throughput_wifi = float(r.hget('throughput', 'wifi'))
+    throughput_5g = float(r.hget('throughput', '5g'))
+    print(f'wifi: {throughput_wifi}, 5g: {throughput_5g}')
+    if throughput_wifi != -1 and throughput_5g != -1:
+        if throughput_5g > throughput_wifi:
+            an = '5g'
+            ratio = (throughput_5g - throughput_wifi) / throughput_wifi * 100
+        else:
+            an = 'wifi'
+            ratio = (throughput_wifi - throughput_5g) / throughput_5g * 100
+        return PlainTextResponse(f'{an} {round(ratio, 2)}')
+    return PlainTextResponse("error")
 
 
 async def ws(websocket):

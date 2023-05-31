@@ -4,7 +4,7 @@ class Route:
     @classmethod
     def get_default_routes(cls):
         # run the ip command to get all default routes
-        command = ["sudo", "ip", "route", "show", "default"]
+        command = ["ip", "route", "show", "default"]
         output = subprocess.check_output(command).decode().strip()
 
         # split the output into individual routes and parse each one
@@ -31,7 +31,7 @@ class Route:
         # run the ip command to add the default route
         command = ["sudo", "ip", "route", "add", "default", "via", gateway_ip, "dev", device_name, "metric", str(metric)]
         try:
-            subprocess.check_output(command, stderr=subprocess.STDOUT, input=b"mns2022\n")
+            subprocess.check_output(command, stderr=subprocess.STDOUT, input=b"nems@704\n")
             return True
         except subprocess.CalledProcessError:
             return False
@@ -43,7 +43,7 @@ class Route:
         # construct the ip command to delete the default route
         command = ["sudo", "ip", "route", "del", "default", "via", gateway_ip, "dev", device_name]
         try:
-            subprocess.check_output(command, stderr=subprocess.STDOUT, input=b"mns2022\n")
+            subprocess.check_output(command, stderr=subprocess.STDOUT, input=b"nems@704\n")
             return True
         except subprocess.CalledProcessError:
             return False
@@ -77,3 +77,15 @@ class Route:
                 return True
 
         return False
+
+    @classmethod
+    def get_current_route(cls):
+        routes = cls.get_default_routes()
+        current_route = min(routes, key=lambda route: int(route[2]))
+        current_route_dict = {
+            'ip': current_route[0],
+            'dev': current_route[1],
+            'metric': current_route[2],
+            'proto': current_route[3]
+        }
+        return current_route_dict
