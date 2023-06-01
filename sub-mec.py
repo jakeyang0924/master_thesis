@@ -16,6 +16,7 @@ UL_SLOTS_PER_SEC = 500
 
 target_mac = 'ff:ff:ff:ff:ff:ff'
 target_rnti = 'ffff'
+r = None
 
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
@@ -27,6 +28,7 @@ def on_connect(client, userdata, flags, rc):
 
 
 def on_message(client, userdata, msg):
+    global r
     topic = msg.topic
     message = msg.payload.decode('utf-8')
 
@@ -67,7 +69,7 @@ def on_message(client, userdata, msg):
             new_exp_smoothing = est_throughput
         else:
             new_exp_smoothing = pre_exp_smoothing + A * (est_throughput - pre_exp_smoothing)
-        r.hset('throughput', 'wifi', new_exp_smoothing)
+        r.hset('throughput', 'wifi', round(new_exp_smoothing, 3))
 
     elif topic == "5g":
         data = json.loads(message)
@@ -119,6 +121,7 @@ def on_message(client, userdata, msg):
 
 
 def main():
+    global r
     # Connect to Redis database
     r = redis.Redis(host='localhost', port=6379, db=0)
     r.hset('throughput', 'wifi', -1)
@@ -126,8 +129,8 @@ def main():
 
     # Parse command-line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument("-m", "--mac", default="ff:ff:ff:ff:ff:ff", help="Target MAC address")
-    parser.add_argument("-r", "--rnti", default="ffff", help="Target RNTI")
+    parser.add_argument("-m", "--mac", default="f4:8c:50:a0:92:4a", help="Target MAC address")
+    parser.add_argument("-r", "--rnti", default="11e5", help="Target RNTI")
     parser.add_argument("-a", "--address", default="172.18.2.1", help="Broker address")
     args = parser.parse_args()
 
@@ -139,7 +142,6 @@ def main():
     client = mqtt.Client()
     client.on_connect = on_connect
     client.on_message = on_message
-    # broker_address = "172.18.2.1"
     port = 1883  # Default MQTT port
     client.connect(broker_address, port)
     client.loop_forever()

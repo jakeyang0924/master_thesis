@@ -8,8 +8,10 @@ file_paths = {
     "slot_ue": "/mnt/oai_tmpfs/slot_ue"
 }
 ue_list_file = "/mnt/oai_tmpfs/ue_list"
+user_cnt = 0
 
 def access_files():
+    global user_cnt
     ue_info_data = {}  # Dictionary to store the extracted information (scs, BWPSize, mcs, Qm, R)
     slot_ue_data = {}  # Dictionary to store the "slot_ue" content
     user_cnt = 0
@@ -63,7 +65,7 @@ broker_address = "172.18.2.1"
 broker_port = 1883
 topic = "5g"
 client = mqtt.Client()
-# client.connect(broker_address, broker_port)
+client.connect(broker_address, broker_port)
 
 while True:
     ue_info_data, slot_ue_data = access_files()
@@ -77,7 +79,7 @@ while True:
     message = json.dumps(message_dict)
     print("ue info:", ue_info_data)
     print("slot:", slot_ue_data)
-    print("user_num:", user_num)
+    print("user_num:", user_cnt)
     client.publish(topic, message)
     
     time.sleep(1)
