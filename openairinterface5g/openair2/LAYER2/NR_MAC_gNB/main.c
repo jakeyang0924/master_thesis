@@ -46,6 +46,13 @@
 
 extern RAN_CONTEXT_t RC;
 
+/* thesis */
+#include <stdio.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <string.h>
+extern struct flock lock;
+
 
 #define MACSTATSSTRLEN 16000
 
@@ -94,6 +101,11 @@ size_t dump_mac_stats(gNB_MAC_INST *gNB, char *output, size_t strlen, bool reset
   NR_SCHED_ENSURE_LOCKED(&gNB->sched_lock);
 
   NR_SCHED_LOCK(&gNB->UE_info.mutex);
+
+  /* thesis */
+  char ue_list_str[50];
+  strcpy(ue_list_str, "");
+
   UE_iterator(gNB->UE_info.list, UE) {
     NR_UE_sched_ctrl_t *sched_ctrl = &UE->UE_sched_ctrl;
     NR_mac_stats_t *stats = &UE->mac_stats;
@@ -180,7 +192,23 @@ size_t dump_mac_stats(gNB_MAC_INST *gNB, char *output, size_t strlen, bool reset
                            lc_id,
                            stats->ul.lc_bytes[lc_id]);
     }
+    /* thesis */
+    char ue_rnti_str[10];
+    sprintf(ue_rnti_str, "%04x\n", UE->rnti);
+    strcat(ue_list_str, ue_rnti_str);    
   }
+  /* thesis */
+  FILE *fptr_ue = fopen("/mnt/oai_tmpfs/ue_list", "w");
+  int fileDescriptor = fileno(fptr_ue);
+  lock.l_type = F_WRLCK;    // Write lock
+  fcntl(fileDescriptor, F_SETLKW, &lock);
+
+  fprintf(fptr_ue, "%s", ue_list_str);
+
+  lock.l_type = F_UNLCK; // Release the lock
+  fcntl(fileDescriptor, F_SETLKW, &lock);
+  fclose(fptr_ue);
+  
   NR_SCHED_UNLOCK(&gNB->UE_info.mutex);
   return output - begin;
 }

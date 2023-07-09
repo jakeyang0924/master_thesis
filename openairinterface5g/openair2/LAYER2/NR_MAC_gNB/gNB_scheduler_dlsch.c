@@ -47,11 +47,15 @@
 
 /* thesis */
 #include <stdio.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
 struct timespec previous_t;
 bool is_previous_t_initialized = 0;
+// struct flock lock;
+extern struct flock lock;
+
 
 ////////////////////////////////////////////////////////
 /////* DLSCH MAC PDU generation (6.1.2 TS 38.321) */////
@@ -791,6 +795,10 @@ static void pf_dl(module_id_t module_id,
     char path[50];
     sprintf(path, "/mnt/oai_tmpfs/mcs%04x", rnti);
     FILE *fptr = fopen(path, "w");
+    int fd = fileno(fptr);
+    lock.l_type = F_WRLCK;    // Write lock
+    fcntl(fd, F_SETLKW, &lock);
+    // perform file update
     fprintf(fptr, "[mcs]\ttimestamp %lu.%09lu rnti %04x mcs %2d Qm %2d R %4d nrOfLayers %2d nrOfSymbols %2d \
       nb_dmrs_prb %2d tbs %d rbSize %3d\n",
       t.tv_sec,
@@ -804,20 +812,8 @@ static void pf_dl(module_id_t module_id,
       sched_pdsch->dmrs_parms.N_PRB_DMRS * sched_pdsch->dmrs_parms.N_DMRS_SLOT,
       TBS,
       rbSize);
-    // fprintf(fptr, "[tbs_calc_info] timestamp %lu%09lu mcs %2d mcs_table %2d nrOfLayers %2d nrOfSymbols %2d \
-    //   nb_dmrs_prb %2d bytes %d min_rbSize %3d max_rbSize %3d tbs %d rbSize %3d\n",
-    //   t.tv_sec,
-    //   t.tv_nsec,
-    //   sched_pdsch->mcs,
-    //   dl_bwp->mcsTableIdx,
-    //   sched_pdsch->nrOfLayers,
-    //   tda_info->nrOfSymbols,
-    //   sched_pdsch->dmrs_parms.N_PRB_DMRS * sched_pdsch->dmrs_parms.N_DMRS_SLOT,
-    //   sched_ctrl->num_total_bytes + oh,
-    //   min_rbSize,
-    //   max_rbSize,
-    //   TBS,
-    //   rbSize);
+    lock.l_type = F_UNLCK; // Release the lock
+    fcntl(fd, F_SETLKW, &lock);
     fclose(fptr);
 
     /* transmissions: directly allocate */
@@ -1036,40 +1032,36 @@ void nr_schedule_ue_spec(module_id_t module_id,
           pucch->ul_slot,
           sched_pdsch->pucch_allocation,
           sched_ctrl->tpc1);
-    
+
     /* thesis */
     char path[50];
     sprintf(path, "/mnt/oai_tmpfs/slot_cnt%04x", rnti);
     int slot_cnt = 0;
     FILE *fptr;
     if (fptr = fopen(path, "r+")) {
+      int fileDescriptor = fileno(fptr);
+      lock.l_type = F_WRLCK;    // Write lock
+      fcntl(fileDescriptor, F_SETLKW, &lock);
+
       fscanf(fptr, "%d", &slot_cnt);
       slot_cnt++;
       fseek(fptr, 0, SEEK_SET);
       fprintf(fptr, "%d\n", slot_cnt);
-      fclose(fptr);
+
+      lock.l_type = F_UNLCK; // Release the lock
+      fcntl(fileDescriptor, F_SETLKW, &lock);
     } else {
       fptr = fopen(path, "w");
-      fprintf(fptr, "1\n");
-      fclose(fptr);
-    }
+      int fileDescriptor = fileno(fptr);
+      lock.l_type = F_WRLCK;
+      fcntl(fileDescriptor, F_SETLKW, &lock);
 
-    // fprintf(fptr,
-    //       "[info] timestamp %lu%09lu frame %4d slot %2d rb_start %3d rb_size %3d startSymbol %2d \
-    //       nb_symbol %2d MCS %2d TBS %4d ul_frame %d ul_slot %d\n",
-    //       t.tv_sec,
-    //       t.tv_nsec,
-    //       frame,
-    //       slot,
-    //       sched_pdsch->rbStart,
-    //       sched_pdsch->rbSize,
-    //       tda_info->startSymbolIndex,
-    //       tda_info->nrOfSymbols,
-    //       sched_pdsch->mcs,
-    //       TBS,
-    //       pucch->frame,
-    //       pucch->ul_slot);
-    
+      fprintf(fptr, "1\n");
+
+      lock.l_type = F_UNLCK; // Release the lock
+      fcntl(fileDescriptor, F_SETLKW, &lock);
+    }
+    fclose(fptr);
 
     const int bwp_id = current_BWP->bwp_id;
     const int coresetid = sched_ctrl->coreset->controlResourceSetId;
@@ -1438,38 +1430,60 @@ void nr_schedule_ue_spec(module_id_t module_id,
     TX_req->Slot = slot;
     /* mark UE as scheduled */
     sched_pdsch->rbSize = 0;
-  }
 
-  /* thesis */
-  FILE *fptr_ue = fopen("/mnt/oai_tmpfs/ue_list", "w");
-  fprintf(fptr_ue, "%s", ue_list_str);
-  fclose(fptr_ue);
+    /* thesis */
+    // FILE *fptr_ue = fopen("/mnt/oai_tmpfs/ue_list", "w");
+    // int fileDescriptor = fileno(fptr_ue);
+    // lock.l_type = F_WRLCK;    // Write lock
+    // fcntl(fileDescriptor, F_SETLKW, &lock);
 
-  long int diff_sec = t.tv_sec - previous_t.tv_sec;
-  long int diff_nsec = t.tv_nsec - previous_t.tv_nsec;
-  if (diff_sec > 0 && diff_nsec < 0) {
-    diff_sec -= 1;
-    diff_nsec += 1000000000;
-  }
-  if (diff_sec >= 1) {
-    int slot_cnt = 0;
-    char path[50];
-    char *line = strtok(ue_list_str, "\n");
-    while(line != NULL) {
-      sprintf(path, "/mnt/oai_tmpfs/slot_cnt%s", line);
-      FILE *fptr = fopen(path, "r");
-      fscanf(fptr, "%d", &slot_cnt);
-      fclose(fptr);
-      remove(path);
+    // fprintf(fptr_ue, "%s", ue_list_str);
 
-      sprintf(path, "/mnt/oai_tmpfs/slot_ue%s", line);
-      fptr = fopen(path, "w");
-      fprintf(fptr, "%d\n", slot_cnt);
-      fclose(fptr);
+    // lock.l_type = F_UNLCK; // Release the lock
+    // fcntl(fileDescriptor, F_SETLKW, &lock);
+    // fclose(fptr_ue);
 
-      line = strtok(NULL, "\n");
-    }
+    // long int diff_sec = t.tv_sec - previous_t.tv_sec;
+    // long int diff_nsec = t.tv_nsec - previous_t.tv_nsec;
+    // if (diff_sec > 0 && diff_nsec < 0) {
+    //   diff_sec -= 1;
+    //   diff_nsec += 1000000000;
+    // }
+    // if (diff_sec >= 1) {
+    //   int slot_cnt = 0;
+    //   char path[50];
+    //   char *line = strtok(ue_list_str, "\n");
+    //   while(line != NULL) {
+    //     sprintf(path, "/mnt/oai_tmpfs/slot_cnt%s", line);
+    //     FILE *fptr = fopen(path, "r");
+    //     int fileDescriptor = fileno(fptr);
+    //     lock.l_type = F_WRLCK;    // Write lock
+    //     fcntl(fileDescriptor, F_SETLKW, &lock);
 
-    previous_t = t;
+    //     fscanf(fptr, "%d", &slot_cnt);
+
+    //     lock.l_type = F_UNLCK; // Release the lock
+    //     fcntl(fileDescriptor, F_SETLKW, &lock);
+    //     fclose(fptr);
+    //     remove(path);
+
+    //     sprintf(path, "/mnt/oai_tmpfs/slot_ue%s", line);
+    //     fptr = fopen(path, "w");
+    //     fileDescriptor = fileno(fptr);
+    //     lock.l_type = F_WRLCK;    // Write lock
+    //     fcntl(fileDescriptor, F_SETLKW, &lock);
+
+    //     fprintf(fptr, "%d\n", slot_cnt);
+
+    //     lock.l_type = F_UNLCK; // Release the lock
+    //     fcntl(fileDescriptor, F_SETLKW, &lock);
+    //     fclose(fptr);
+
+    //     line = strtok(NULL, "\n");
+    //   }
+
+    //   // previous_t = t;
+    // }
+
   }
 }
