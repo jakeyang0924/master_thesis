@@ -5,7 +5,7 @@ import paho.mqtt.client as mqtt
 file_paths = {
     "bwp": "/mnt/oai_tmpfs/bwp",
     "mcs": "/mnt/oai_tmpfs/mcs",
-    "slot_ue": "/mnt/oai_tmpfs/slot_ue"
+    "slot_ue": "/mnt/oai_tmpfs/slot_cnt"
 }
 ue_list_file = "/mnt/oai_tmpfs/ue_list"
 user_cnt = 0
@@ -67,8 +67,19 @@ topic = "5g"
 client = mqtt.Client()
 client.connect(broker_address, broker_port)
 
+_, prev_slot_ue_data = access_files()
+time.sleep(1)
+
 while True:
-    ue_info_data, slot_ue_data = access_files()
+    ue_info_data, cur_slot_ue_data = access_files()
+    
+    slot_ue_data = {}
+    for k,v in cur_slot_ue_data.items():
+        if k in prev_slot_ue_data:
+            slot_ue_data[k] = int(v) - int(prev_slot_ue_data[k])
+        else:
+            slot_ue_data[k] = v
+    prev_slot_ue_data = cur_slot_ue_data
     
     # Pack and publish the message to MQTT broker
     message_dict = {

@@ -4,12 +4,16 @@ import subprocess
 import json
 import paho.mqtt.client as mqtt
 
-def parse_rx_time(file_path):
+def parse_time(file_path):
+    time_info = {}
     if os.path.exists(file_path):
         with open(file_path, 'r') as file:
             lines = file.readlines()
-            rx_time = int(lines[3].split(': ')[1].strip())
-            return rx_time
+            time_info['busy_time'] = int(lines[1].split(': ')[1].strip())
+            time_info['tx_time'] = int(lines[2].split(': ')[1].strip())
+            time_info['rx_time'] = int(lines[3].split(': ')[1].strip())
+            time_info['bss_rx_time'] = int(lines[4].split(': ')[1].strip())
+            return time_info
     return None
 
 def parse_tx_value(file_path):
@@ -22,7 +26,7 @@ def parse_tx_value(file_path):
         return tx_value
 
 def get_tx_bitrate():
-    command = "iw dev wlan0 station dump"
+    command = "iw dev wl1-ap0 station dump"
     output = subprocess.check_output(command, shell=True, text=True)
     lines = output.splitlines()
     tx_bitrates = {}
@@ -51,7 +55,7 @@ topic = "wifi"
 client = mqtt.Client()
 client.connect(broker_address, broker_port)
 
-previous_rx_value = parse_rx_time('/sys/kernel/debug/ieee80211/phy0/mt76/time-info')
+previous_time = parse_time('/sys/kernel/debug/ieee80211/wl1/mt76/time-info')
 time.sleep(1)
 
 # Initialize dictionary for previous TX values
@@ -59,23 +63,26 @@ previous_tx_values = {}
 
 while True:
     # Deal with rx time
-    rx_value = parse_rx_time('/sys/kernel/debug/ieee80211/phy0/mt76/time-info')
-    if rx_value is not None:
-        rx_diff = rx_value - previous_rx_value
+    time_diff = {}
+    time_info = parse_time('/sys/kernel/debug/ieee80211/wl1/mt76/time-info')
+    if time_info is not None:
+        time_diff['busy_time'] = time_info['busy_time'] - previous_time['busy_time']
+        time_diff['tx_time'] = time_info['tx_time'] - previous_time['tx_time']
+        time_diff['rx_time'] = time_info['rx_time'] - previous_time['rx_time']
+        time_diff['bss_rx_time'] = time_info['bss_rx_time'] - previous_time['bss_rx_time']
         
-        print(f"rx_time: {rx_diff}")
-        
-        previous_rx_value = rx_value
+        previous_time = time_info
+        print("time_diff:", time_diff)
     else:
-        print("rx_value are none.")
+        print("time_info are none.")
     
     # Deal with every device tx airtime
     user_cnt = 0
-    directories = os.listdir('/sys/kernel/debug/ieee80211/phy0/netdev:wlan0/stations/')
+    directories = os.listdir('/sys/kernel/debug/ieee80211/wl1/netdev:wl1-ap0/stations/')
     tx_differences = {}
     for directory in directories:
         user_cnt += 1 
-        file_path = '/sys/kernel/debug/ieee80211/phy0/netdev:wlan0/stations/{}/airtime'.format(directory)
+        file_path = '/sys/kernel/debug/ieee80211/wl1/netdev:wl1-ap0/stations/{}/airtime'.format(directory)
         try:
             tx_value = parse_tx_value(file_path)
             if directory not in previous_tx_values:
@@ -100,7 +107,10 @@ while True:
     
     # Pack and publish the message to MQTT broker
     message_dict = {
-        'rx_time': rx_diff,
+        'busy_time': time_diff['busy_time'],
+        'tx_time': time_diff['tx_time'],
+        'rx_time': time_diff['rx_time'],
+        'bss_rx_time': time_diff['bss_rx_time'],
         'airtime': tx_differences,
         'bitrate': tx_bitrates,
         'user_num': user_cnt

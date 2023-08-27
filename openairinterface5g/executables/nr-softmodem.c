@@ -82,6 +82,11 @@ unsigned short config_frames[4] = {2,9,11,13};
 #include "openair2/E1AP/e1ap_common.h"
 #include "openair2/E1AP/e1ap_api.h"
 
+/* thesis */
+#include <stdio.h>
+#include <fcntl.h>
+struct flock lock;
+
 pthread_cond_t nfapi_sync_cond;
 pthread_mutex_t nfapi_sync_mutex;
 int nfapi_sync_var=-1; //!< protected by mutex \ref nfapi_sync_mutex
@@ -569,6 +574,12 @@ void init_pdcp(void) {
 }
 
 int main( int argc, char **argv ) {
+  /* thesis */
+  lock.l_type = F_WRLCK;    // Write lock
+  lock.l_whence = SEEK_SET; // Lock entire file
+  lock.l_start = 0;
+  lock.l_len = 0;
+
   int ru_id, CC_id = 0;
   start_background_system();
 

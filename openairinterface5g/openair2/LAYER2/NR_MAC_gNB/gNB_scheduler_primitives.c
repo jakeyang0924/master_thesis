@@ -62,7 +62,9 @@
 /* thesis */
 #include <sys/time.h>
 #include <stdio.h>
+#include <fcntl.h>
 #include <string.h>
+extern struct flock lock;
 
 //#define DEBUG_DCI
 
@@ -2185,7 +2187,7 @@ void configure_UE_BWP(gNB_MAC_INST *nr_mac,
   DL_BWP->BWPStart = NRRIV2PRBOFFSET(dl_genericParameters.locationAndBandwidth, MAX_BWP_SIZE);
   DL_BWP->initial_BWPSize = NRRIV2BW(scc->downlinkConfigCommon->initialDownlinkBWP->genericParameters.locationAndBandwidth, MAX_BWP_SIZE);
   DL_BWP->initial_BWPStart = NRRIV2PRBOFFSET(scc->downlinkConfigCommon->initialDownlinkBWP->genericParameters.locationAndBandwidth, MAX_BWP_SIZE);
-  
+
   NR_BWP_t ul_genericParameters = (UL_BWP->bwp_id > 0 && ul_bwp) ?
     ul_bwp->bwp_Common->genericParameters:
     scc->uplinkConfigCommon->initialUplinkBWP->genericParameters;
@@ -2207,26 +2209,29 @@ void configure_UE_BWP(gNB_MAC_INST *nr_mac,
 
   if(UE) {
     /* thesis */
+    // struct flock lock;
+    // lock.l_type = F_WRLCK;    // Write lock
+    // lock.l_whence = SEEK_SET; // Lock entire file
+    // lock.l_start = 0;
+    // lock.l_len = 0;
     struct timespec t={0,0};
     clock_gettime(CLOCK_REALTIME, &t); // Unix nano timestamp
     char path[50];
     sprintf(path, "/mnt/oai_tmpfs/bwp%04x", UE->rnti);
     FILE *fptr = fopen(path, "w");
+    int fileDescriptor = fileno(fptr);
+    lock.l_type = F_WRLCK;
+    fcntl(fileDescriptor, F_SETLKW, &lock);
+
     fprintf(fptr, "[bwp]\ttimestamp %lu.%09lu rnti %04x scs %d BWPSize %d\n",
       t.tv_sec,
       t.tv_nsec,
       UE->rnti,
       DL_BWP->scs,
       DL_BWP->BWPSize);
-    // fprintf(fptr, "[bwp_info] timestamp %lu%09lu uid %d scs %d BWPSize %d BWPStart %d initial_BWPSize %d initial_BWPStart %d\n\n",
-    //   t.tv_sec,
-    //   t.tv_nsec,
-    //   UE->uid,
-    //   DL_BWP->scs,
-    //   DL_BWP->BWPSize,
-    //   DL_BWP->BWPStart,
-    //   DL_BWP->initial_BWPSize,
-    //   DL_BWP->initial_BWPStart);
+    
+    lock.l_type = F_UNLCK; // Release the lock
+    fcntl(fileDescriptor, F_SETLKW, &lock);
     fclose(fptr);
 
     // Reset required fields in sched_ctrl (e.g. ul_ri and tpmi)
