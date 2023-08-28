@@ -8,11 +8,15 @@ import paho.mqtt.client as mqtt
 US_PER_SEC = 1000000
 # wifi physical/theoretical throughput ratio
 C = 0.8
+# available time ratio
+B = 0.9
 # alpha for exponential smoothing
-A = 0.8
+A = 0.2
+# interference factor
+E = 1.024
 # slots per second
 SLOTS_PER_SEC = 2000
-UL_SLOTS_PER_SEC = 500
+UL_SLOTS_PER_SEC = 800
 
 target_mac = 'ff:ff:ff:ff:ff:ff'
 target_rnti = 'ffff'
@@ -34,7 +38,10 @@ def on_message(client, userdata, msg):
 
     if topic == "wifi":
         data = json.loads(message)
-        rx_time = int(data['rx_time'])
+        busy_time = float(data['busy_time'])
+        tx_time = float(data['tx_time'])
+        rx_time = float(data['rx_time'])
+        bss_rx_time = float(data['bss_rx_time'])
         airtime_dict = data['airtime']
         bitrate_dict = data['bitrate']
         user_num = data['user_num']
@@ -43,19 +50,16 @@ def on_message(client, userdata, msg):
             print("wifi receive no data...")
             return
 
-        avail_time = float(US_PER_SEC - rx_time)
-        print("avail_time:", avail_time)
+        avail_time = float(max(max(US_PER_SEC * B - bss_rx_time, US_PER_SEC * B / 2) \
+            - E * (rx_time - bss_rx_time), 0))
         fair_share = avail_time / user_num
-        print("fair share:", fair_share)
 
         for k, v in airtime_dict.items():
             if k != target_mac and v != -1 and v <= fair_share:
                 avail_time -= v
                 user_num -= 1
-            print(k, v)
 
         est_time = avail_time / user_num
-        print("est_time:", est_time)
         for k, v in bitrate_dict.items():
             if k == target_mac:
                 est_throughput = round(est_time * float(v) * C / US_PER_SEC, 3)
@@ -70,6 +74,7 @@ def on_message(client, userdata, msg):
         else:
             new_exp_smoothing = pre_exp_smoothing + A * (est_throughput - pre_exp_smoothing)
         r.hset('throughput', 'wifi', round(new_exp_smoothing, 3))
+        print("wifi new exp smoothing:", new_exp_smoothing)
 
     elif topic == "5g":
         data = json.loads(message)
@@ -82,18 +87,14 @@ def on_message(client, userdata, msg):
             return
 
         avail_slot = SLOTS_PER_SEC - UL_SLOTS_PER_SEC
-        print("avail_slot:", avail_slot)
         fair_slot = avail_slot // user_num
-        print("fair_slot:", fair_slot)
 
         for k, v in slot_dict.items():
             if k != target_rnti and v <= fair_slot:
                 avail_slot -= v
                 user_num -= 1
-            print(k, v)
 
         est_slot = avail_slot // user_num
-        print("est_slot:", est_slot)
 
         # get info from target ue
         info_dict = ue_info_dict.get(target_rnti)
@@ -108,6 +109,7 @@ def on_message(client, userdata, msg):
         est_throughput = round(int(tbs.strip()) * est_slot / 1000000, 3)
         print("5g estimated throughput:", est_throughput)
 
+        # calculate new exponential smoothing
         pre_exp_smoothing = r.hget('throughput', '5g')
         if pre_exp_smoothing is not None:
             pre_exp_smoothing = float(pre_exp_smoothing.decode('utf-8'))
@@ -116,6 +118,7 @@ def on_message(client, userdata, msg):
         else:
             new_exp_smoothing = pre_exp_smoothing + A * (est_throughput - pre_exp_smoothing)
         r.hset('throughput', '5g', new_exp_smoothing)
+        print("5g new exp smoothing:", new_exp_smoothing)
     else:
         print("Unknown topic:", topic)
 

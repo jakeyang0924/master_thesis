@@ -99,7 +99,7 @@ async def streaming(interval, time, size):
 
 
 async def test(request):
-    gen = streaming(0.5, 60, 1000)
+    gen = streaming(0.01, 120, 1000)
     return StreamingResponse(gen)
 
 r = redis.Redis(host='localhost', port=6379, db=0)
@@ -115,7 +115,7 @@ async def decision(request):
         else:
             an = 'wifi'
             ratio = (throughput_wifi - throughput_5g) / throughput_5g * 100
-        return PlainTextResponse(f'{an} {round(ratio, 2)}')
+        return PlainTextResponse(f'{an} {round(ratio, 2)} {throughput_5g} {throughput_wifi}')
     return PlainTextResponse("error")
 
 
